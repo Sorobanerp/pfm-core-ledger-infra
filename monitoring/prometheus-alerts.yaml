@@ -1,0 +1,65 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: pfm-core-ledger-java-slo-alerts
+  namespace: pfm-platform
+  labels:
+    app: pfm-core-ledger-java
+    role: alert-rules
+spec:
+  groups:
+    - name: pfm-core-ledger-slo.rules
+      interval: 30s
+      rules:
+        # 1. Availability < 99.95% (Multi-Window Burn Rate — Error Budget = 0.05% = 0.0005)
+        # Fast Burn (1h / 5m window, burn rate > 14.4x of 0.0005 error budget)
+        - alert: PfmCoreLedgerSloAvailabilityFastBurn
+          expr: |
+            (
+              sum(rate(grpc_server_handled_total{app="pfm-core-ledger-java",grpc_code=~"Unknown|Internal|Unavailable|DataLoss|DeadlineExceeded"}[1h]))
+              /
+              sum(rate(grpc_server_handled_total{app="pfm-core-ledger-java"}[1h]))
+            ) > (14.4 * (1 - 0.9995))
+            and
+            (
+              sum(rate(grpc_server_handled_total{app="pfm-core-ledger-java",grpc_code=~"Unknown|Internal|Unavailable|DataLoss|DeadlineExceeded"}[5m]))
+              /
+              sum(rate(grpc_server_handled_total{app="pfm-core-ledger-java"}[5m]))
+            ) > (14.4 * (1 - 0.9995))
+          for: 2m
+          labels:
+            severity: critical
+            service: pfm-core-ledger-java
+            slo: availability-99.95
+          annotations:
+            summary: "PFM Core Ledger Availability SLO (< 99.95%) Fast Burn Detected"
+            description: "Multi-window (1h/5m) error budget burn rate exceeds 14.4x for 99.95% availability SLO."
+
+        # 2. gRPC Latency p99 > 150ms (0.15s)
+        - alert: PfmCoreLedgerGrpcLatencyP99High
+          expr: |
+            histogram_quantile(
+              0.99,
+              sum(rate(grpc_server_handling_seconds_bucket{app="pfm-core-ledger-java"}[5m])) by (le, grpc_method)
+            ) > 0.150
+          for: 5m
+          labels:
+            severity: warning
+            service: pfm-core-ledger-java
+            slo: grpc-latency-p99-150ms
+          annotations:
+            summary: "PFM Core Ledger gRPC p99 Latency > 150ms"
+            description: "gRPC method {{ $labels.grpc_method }} p99 latency is {{ $value }}s (threshold: 0.150s)."
+
+        # 3. Transactional Outbox Backlog > 100 unpublished records
+        - alert: PfmCoreLedgerOutboxBacklogHigh
+          expr: |
+            sum(pfm_ledger_outbox_events_pending_total{app="pfm-core-ledger-java",status="PENDING"}) > 100
+          for: 3m
+          labels:
+            severity: critical
+            service: pfm-core-ledger-java
+            component: transactional-outbox
+          annotations:
+            summary: "PFM Core Ledger Outbox Backlog > 100 Unpublished Records"
+            description: "Table outbox_events has {{ $value }} unpublished (PENDING) records waiting for Kafka relay."

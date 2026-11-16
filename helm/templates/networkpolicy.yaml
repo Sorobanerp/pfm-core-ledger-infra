@@ -1,0 +1,54 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pfm-core-ledger-java-netpol
+  namespace: pfm-platform
+  labels:
+    app: pfm-core-ledger-java
+spec:
+  podSelector:
+    matchLabels:
+      app: pfm-core-ledger-java
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Zero-Trust Ingress: Accept gRPC traffic ONLY from pfm-ingestion-bff-go
+    - from:
+        - podSelector:
+            matchLabels:
+              app: {{ .Values.networkPolicy.allowedIngressApp }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.grpcPort }}
+        - protocol: TCP
+          port: {{ .Values.service.httpPort }}
+  egress:
+    # Allow Egress ONLY to PostgreSQL pfm_core_ledger (5432)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: pfm-core-ledger-postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Allow Egress ONLY to Apache Kafka (9092)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: pfm-kafka
+      ports:
+        - protocol: TCP
+          port: 9092
+    # Allow OpenTelemetry OTLP Collector (4317/4318) and CoreDNS (53)
+    - ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}

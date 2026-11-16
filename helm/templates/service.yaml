@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: pfm-core-ledger-java
+  namespace: pfm-platform
+  labels:
+    app: pfm-core-ledger-java
+spec:
+  type: ClusterIP
+  selector:
+    app: pfm-core-ledger-java
+  ports:
+    - name: http
+      port: {{ .Values.service.httpPort }}
+      targetPort: http
+      protocol: TCP
+    - name: grpc
+      port: {{ .Values.service.grpcPort }}
+      targetPort: grpc
+      protocol: TCP

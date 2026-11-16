@@ -1,0 +1,38 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/dantas-pfm/pfm-core-ledger-java
+  tag: "local"
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  name: pfm-core-ledger-sa
+  annotations: {}
+
+service:
+  httpPort: 8080
+  grpcPort: 9090
+
+env:
+  JAVA_TOOL_OPTIONS: "-XX:+UseZGC -XX:+ZGenerational -XX:MaxRAMPercentage=75.0"
+  SPRING_THREADS_VIRTUAL_ENABLED: "true"
+  DB_URL: "jdbc:postgresql://localhost:5432/pfm_core_ledger"
+  KAFKA_BOOTSTRAP_SERVERS: "localhost:9092"
+  OTEL_SERVICE_NAME: "pfm-core-ledger-java"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4318/v1/traces"
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+pdb:
+  enabled: false
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
+  allowedIngressApp: "pfm-ingestion-bff-go"

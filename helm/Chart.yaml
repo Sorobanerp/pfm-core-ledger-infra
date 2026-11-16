@@ -1,0 +1,6 @@
+apiVersion: v2
+name: pfm-core-ledger
+description: Dedicated 1:1 Helm Chart for pfm-core-ledger-java (Java 25 LTS, ZGC Generational, Virtual Threads, RLS & NetworkPolicy)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

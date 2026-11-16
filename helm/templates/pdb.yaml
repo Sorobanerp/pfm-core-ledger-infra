@@ -1,0 +1,14 @@
+{{- if .Values.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pfm-core-ledger-java-pdb
+  namespace: pfm-platform
+  labels:
+    app: pfm-core-ledger-java
+spec:
+  minAvailable: {{ .Values.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app: pfm-core-ledger-java
+{{- end }}

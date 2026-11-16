@@ -1,0 +1,52 @@
+name: pfm-core-ledger-infra-validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-iac-helm-and-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.8.0
+
+      - name: OpenTofu Format Check
+        run: tofu fmt -check -recursive terraform/
+
+      - name: OpenTofu Validate (AWS, Azure, GCP)
+        run: |
+          for cloud in aws azure gcp; do
+            echo "Validating terraform/$cloud..."
+            cd terraform/$cloud
+            tofu init -backend=false
+            tofu validate
+            cd ../..
+          done
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Helm Lint (Local & Prod Values)
+        run: |
+          helm lint helm -f helm/values-local.yaml
+          helm lint helm -f helm/values-prod.yaml
+
+      - name: Run tfsec Static Security Analysis
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          soft_fail: false
+
+      - name: Run Checkov IaC & Kubernetes Policy Scan
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform,helm,kubernetes
+          soft_fail: false
