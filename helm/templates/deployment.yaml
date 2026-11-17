@@ -41,6 +41,10 @@ spec:
               containerPort: {{ .Values.service.grpcPort }}
               protocol: TCP
           env:
+            - name: SERVER_PORT
+              value: {{ .Values.env.SERVER_PORT | quote }}
+            - name: GRPC_SERVER_PORT
+              value: {{ .Values.env.GRPC_SERVER_PORT | quote }}
             - name: JAVA_TOOL_OPTIONS
               value: {{ .Values.env.JAVA_TOOL_OPTIONS | quote }}
             - name: SPRING_THREADS_VIRTUAL_ENABLED
