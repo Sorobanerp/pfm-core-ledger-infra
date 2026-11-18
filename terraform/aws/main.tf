@@ -18,19 +18,19 @@ variable "environment" {
 variable "aws_region" {
   description = "AWS region"
   type        = string
-  default     = "sa-east-1"
+  default     = "us-east-2"
 }
 
 variable "eks_oidc_provider_arn" {
   description = "EKS OIDC Provider ARN for IRSA"
   type        = string
-  default     = "arn:aws:iam::000000000000:oidc-provider/oidc.eks.sa-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B716D3041E"
+  default     = "arn:aws:iam::000000000000:oidc-provider/oidc.eks.us-east-2.amazonaws.com/id/EXAMPLED539D4633E53DE1B716D3041E"
 }
 
 variable "eks_oidc_issuer_url" {
   description = "EKS OIDC Issuer URL without https://"
   type        = string
-  default     = "oidc.eks.sa-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B716D3041E"
+  default     = "oidc.eks.us-east-2.amazonaws.com/id/EXAMPLED539D4633E53DE1B716D3041E"
 }
 
 variable "rds_core_ledger_resource_id" {
@@ -42,13 +42,13 @@ variable "rds_core_ledger_resource_id" {
 variable "msk_cluster_arn" {
   description = "MSK Cluster ARN for Kafka topic-level IAM access"
   type        = string
-  default     = "arn:aws:kafka:sa-east-1:000000000000:cluster/pfm-kafka/00000000-0000-0000-0000-000000000001-1"
+  default     = "arn:aws:kafka:us-east-2:000000000000:cluster/pfm-kafka/00000000-0000-0000-0000-000000000001-1"
 }
 
 variable "tenant_kms_key_arn" {
   description = "KMS Master Key ARN for Tenant Envelope Encryption (DEK/KEK)"
   type        = string
-  default     = "arn:aws:kms:sa-east-1:000000000000:key/11112222-3333-4444-5555-666677778888"
+  default     = "arn:aws:kms:us-east-2:000000000000:key/11112222-3333-4444-5555-666677778888"
 }
 
 resource "aws_iam_role" "pfm_core_ledger_irsa_role" {
