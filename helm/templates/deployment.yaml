@@ -6,6 +6,9 @@ metadata:
   labels:
     app: pfm-core-ledger-java
     tier: core-banking
+    tags.datadoghq.com/service: "pfm-core-ledger-java"
+    tags.datadoghq.com/env: "production"
+    tags.datadoghq.com/version: "0.1.0"
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
@@ -16,6 +19,9 @@ spec:
       labels:
         app: pfm-core-ledger-java
         tier: core-banking
+        tags.datadoghq.com/service: "pfm-core-ledger-java"
+        tags.datadoghq.com/env: "production"
+        tags.datadoghq.com/version: "0.1.0"
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
       securityContext:
@@ -57,6 +63,14 @@ spec:
               value: {{ .Values.env.OTEL_SERVICE_NAME | quote }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.env.OTEL_EXPORTER_OTLP_ENDPOINT | quote }}
+            - name: DD_LOGS_INJECTION
+              value: {{ .Values.env.DD_LOGS_INJECTION | default "true" | quote }}
+            - name: DD_SERVICE
+              value: "pfm-core-ledger-java"
+            - name: DD_ENV
+              value: "production"
+            - name: DD_VERSION
+              value: "0.1.0"
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
