@@ -16,39 +16,65 @@ variable "environment" {
 }
 
 variable "aws_region" {
-  description = "AWS region"
+  description = "AWS region (Ohio)"
   type        = string
-  default     = "sa-east-1"
+  default     = "us-east-2"
+}
+
+variable "shared_state_bucket" {
+  description = "S3 bucket storing pfm-shared-infra remote state"
+  type        = string
+  default     = "sorobanerp-pfm-tfstate-us-east-2-366476833548"
 }
 
 variable "eks_oidc_provider_arn" {
-  description = "EKS OIDC Provider ARN for IRSA"
+  description = "Optional override for EKS OIDC Provider ARN for IRSA"
   type        = string
-  default     = "arn:aws:iam::000000000000:oidc-provider/oidc.eks.sa-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B716D3041E"
+  default     = ""
 }
 
 variable "eks_oidc_issuer_url" {
-  description = "EKS OIDC Issuer URL without https://"
+  description = "Optional override for EKS OIDC Issuer URL without https://"
   type        = string
-  default     = "oidc.eks.sa-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B716D3041E"
+  default     = ""
 }
 
 variable "rds_core_ledger_resource_id" {
-  description = "RDS DB instance resource ID for pfm_core_ledger"
+  description = "Optional override for RDS DB instance resource ID for pfm_core_ledger"
   type        = string
-  default     = "db-PFMCORELEDGER01"
+  default     = ""
 }
 
 variable "msk_cluster_arn" {
   description = "MSK Cluster ARN for Kafka topic-level IAM access"
   type        = string
-  default     = "arn:aws:kafka:sa-east-1:000000000000:cluster/pfm-kafka/00000000-0000-0000-0000-000000000001-1"
+  default     = "arn:aws:kafka:us-east-2:000000000000:cluster/pfm-kafka/00000000-0000-0000-0000-000000000001-1"
 }
 
 variable "tenant_kms_key_arn" {
-  description = "KMS Master Key ARN for Tenant Envelope Encryption (DEK/KEK)"
+  description = "Optional override for KMS Master Key ARN for Tenant Envelope Encryption (DEK/KEK)"
   type        = string
-  default     = "arn:aws:kms:sa-east-1:000000000000:key/11112222-3333-4444-5555-666677778888"
+  default     = ""
+}
+
+provider "aws" {
+  region = var.aws_region
+}
+
+data "terraform_remote_state" "shared" {
+  backend = "s3"
+  config = {
+    bucket = var.shared_state_bucket
+    key    = "pfm-shared-infra/terraform.tfstate"
+    region = var.aws_region
+  }
+}
+
+locals {
+  eks_oidc_provider_arn       = coalesce(var.eks_oidc_provider_arn, try(data.terraform_remote_state.shared.outputs.oidc_provider_arn, ""))
+  eks_oidc_issuer_url         = coalesce(var.eks_oidc_issuer_url, try(data.terraform_remote_state.shared.outputs.oidc_issuer_url, ""))
+  rds_core_ledger_resource_id = coalesce(var.rds_core_ledger_resource_id, try(data.terraform_remote_state.shared.outputs.rds_resource_id, "db-PFMCORELEDGER01"))
+  tenant_kms_key_arn          = coalesce(var.tenant_kms_key_arn, try(data.terraform_remote_state.shared.outputs.kms_master_key_arn, ""))
 }
 
 resource "aws_iam_role" "pfm_core_ledger_irsa_role" {
@@ -61,13 +87,13 @@ resource "aws_iam_role" "pfm_core_ledger_irsa_role" {
       {
         Effect = "Allow"
         Principal = {
-          Federated = var.eks_oidc_provider_arn
+          Federated = local.eks_oidc_provider_arn
         }
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
           StringEquals = {
-            "${var.eks_oidc_issuer_url}:sub" = "system:serviceaccount:pfm-platform:pfm-core-ledger-sa"
-            "${var.eks_oidc_issuer_url}:aud" = "sts.amazonaws.com"
+            "${local.eks_oidc_issuer_url}:sub" = "system:serviceaccount:pfm-platform:pfm-core-ledger-sa"
+            "${local.eks_oidc_issuer_url}:aud" = "sts.amazonaws.com"
           }
         }
       }
@@ -89,7 +115,7 @@ resource "aws_iam_role_policy" "pfm_core_ledger_least_privilege" {
           "rds-db:connect"
         ]
         Resource = [
-          "arn:aws:rds-db:${var.aws_region}:*:dbuser:${var.rds_core_ledger_resource_id}/pfm_app_user"
+          "arn:aws:rds-db:${var.aws_region}:*:dbuser:${local.rds_core_ledger_resource_id}/pfm_app_user"
         ]
       },
       {
@@ -137,7 +163,7 @@ resource "aws_iam_role_policy" "pfm_core_ledger_least_privilege" {
           "kms:GenerateDataKey"
         ]
         Resource = [
-          var.tenant_kms_key_arn
+          local.tenant_kms_key_arn
         ]
       }
     ]

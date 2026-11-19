@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: pfm-core-ledger-java
   namespace: pfm-platform
+  annotations:
+    checkov.io/skip1: "CKV_K8S_43=Tag imutavel v0.1.0 gerenciada pelo pipeline GitOps"
   labels:
     app: pfm-core-ledger-java
     tier: core-banking
@@ -23,16 +25,19 @@ spec:
         tags.datadoghq.com/env: "production"
         tags.datadoghq.com/version: "0.1.0"
     spec:
+      automountServiceAccountToken: false
       serviceAccountName: {{ .Values.serviceAccount.name }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532
         fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: pfm-core-ledger-java
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
