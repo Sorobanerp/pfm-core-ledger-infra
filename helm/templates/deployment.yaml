@@ -80,7 +80,7 @@ spec:
               value: "production"
             - name: DD_VERSION
               value: "0.1.0"
-          {{- if ne (.Values.probesEnabled | default true) false }}
+          {{- if ne (toString .Values.probesEnabled) "false" }}
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
