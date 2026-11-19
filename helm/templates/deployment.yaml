@@ -51,6 +51,10 @@ spec:
             - name: grpc
               containerPort: {{ .Values.service.grpcPort }}
               protocol: TCP
+          {{- if .Values.command }}
+          command:
+            {{- toYaml .Values.command | nindent 12 }}
+          {{- end }}
           env:
             - name: SERVER_PORT
               value: {{ .Values.env.SERVER_PORT | quote }}
@@ -76,6 +80,7 @@ spec:
               value: "production"
             - name: DD_VERSION
               value: "0.1.0"
+          {{- if ne (.Values.probesEnabled | default true) false }}
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
@@ -91,5 +96,6 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 3
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
