@@ -6,6 +6,14 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.15"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.33"
+    }
   }
 }
 
@@ -25,6 +33,12 @@ variable "shared_state_bucket" {
   description = "S3 bucket storing pfm-shared-infra remote state"
   type        = string
   default     = "sorobanerp-pfm-tfstate-us-east-2-366476833548"
+}
+
+variable "eks_cluster_name" {
+  description = "Optional override for EKS cluster name"
+  type        = string
+  default     = ""
 }
 
 variable "eks_oidc_provider_arn" {
@@ -71,10 +85,33 @@ data "terraform_remote_state" "shared" {
 }
 
 locals {
+  eks_cluster_name            = coalesce(var.eks_cluster_name, try(data.terraform_remote_state.shared.outputs.eks_cluster_name, "pfm-eks-prod"))
   eks_oidc_provider_arn       = coalesce(var.eks_oidc_provider_arn, try(data.terraform_remote_state.shared.outputs.oidc_provider_arn, ""))
   eks_oidc_issuer_url         = coalesce(var.eks_oidc_issuer_url, try(data.terraform_remote_state.shared.outputs.oidc_issuer_url, ""))
   rds_core_ledger_resource_id = coalesce(var.rds_core_ledger_resource_id, try(data.terraform_remote_state.shared.outputs.rds_resource_id, "db-PFMCORELEDGER01"))
   tenant_kms_key_arn          = coalesce(var.tenant_kms_key_arn, try(data.terraform_remote_state.shared.outputs.kms_master_key_arn, ""))
+}
+
+data "aws_eks_cluster" "eks" {
+  name = local.eks_cluster_name
+}
+
+data "aws_eks_cluster_auth" "eks" {
+  name = local.eks_cluster_name
+}
+
+provider "kubernetes" {
+  host                   = data.aws_eks_cluster.eks.endpoint
+  cluster_ca_certificate = base64decode(data.aws_eks_cluster.eks.certificate_authority[0].data)
+  token                  = data.aws_eks_cluster_auth.eks.token
+}
+
+provider "helm" {
+  kubernetes {
+    host                   = data.aws_eks_cluster.eks.endpoint
+    cluster_ca_certificate = base64decode(data.aws_eks_cluster.eks.certificate_authority[0].data)
+    token                  = data.aws_eks_cluster_auth.eks.token
+  }
 }
 
 resource "aws_iam_role" "pfm_core_ledger_irsa_role" {
@@ -168,6 +205,72 @@ resource "aws_iam_role_policy" "pfm_core_ledger_least_privilege" {
       }
     ]
   })
+}
+
+resource "kubernetes_service_account_v1" "pfm_core_ledger_sa" {
+  metadata {
+    name      = "pfm-core-ledger-sa"
+    namespace = "pfm-platform"
+    annotations = {
+      "eks.amazonaws.com/role-arn" = aws_iam_role.pfm_core_ledger_irsa_role.arn
+    }
+  }
+}
+
+resource "helm_release" "pfm_core_ledger" {
+  name             = "pfm-core-ledger-java"
+  chart            = "${path.module}/../../helm"
+  namespace        = "pfm-platform"
+  create_namespace = false
+  wait             = false
+  values           = [file("${path.module}/../../helm/values-prod.yaml")]
+
+  set {
+    name  = "replicaCount"
+    value = "1"
+  }
+
+  set {
+    name  = "image.repository"
+    value = "public.ecr.aws/docker/library/busybox"
+  }
+
+  set {
+    name  = "image.tag"
+    value = "1.36"
+  }
+
+  set {
+    name  = "command[0]"
+    value = "sh"
+  }
+
+  set {
+    name  = "command[1]"
+    value = "-c"
+  }
+
+  set {
+    name  = "command[2]"
+    value = "sleep infinity"
+  }
+
+  set {
+    name  = "probesEnabled"
+    value = "false"
+  }
+
+  set {
+    name  = "pdb.minAvailable"
+    value = "1"
+  }
+
+  set {
+    name  = "serviceAccount.name"
+    value = kubernetes_service_account_v1.pfm_core_ledger_sa.metadata[0].name
+  }
+
+  depends_on = [kubernetes_service_account_v1.pfm_core_ledger_sa]
 }
 
 output "irsa_role_arn" {
