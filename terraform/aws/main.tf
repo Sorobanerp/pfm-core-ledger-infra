@@ -270,6 +270,11 @@ resource "helm_release" "pfm_core_ledger" {
     value = kubernetes_service_account_v1.pfm_core_ledger_sa.metadata[0].name
   }
 
+  set {
+    name  = "chartChecksum"
+    value = filesha256("${path.module}/../../helm/templates/deployment.yaml")
+  }
+
   depends_on = [kubernetes_service_account_v1.pfm_core_ledger_sa]
 }
 
