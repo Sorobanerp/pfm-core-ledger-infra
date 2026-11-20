@@ -1,16 +1,66 @@
-# pfm-core-ledger-infra
+# PFM Core Ledger Infra — IaC 1:1 (ECS Fargate Spot Arm64 / EKS)
 
-Repositório dedicado **1:1 de Infraestrutura como Código (IaC) & GitOps** para o microsserviço `pfm-core-ledger-java` (Java 25 LTS, ZGC Generational, Virtual Threads, PostgreSQL 16 RLS e Transactional Outbox).
-
-## Estrutura
-- `terraform/aws`, `terraform/azure`, `terraform/gcp`: Políticas IAM / Service Accounts (IRSA / Workload Identity) de menor privilégio restritas exclusivamente ao banco `pfm_core_ledger`, tópicos Kafka (`tx.categorized`, `ledger.entry.committed`) e chave KMS do tenant.
-- `helm/`: Chart Kubernetes com suporte a Virtual Threads + ZGC Generational (`JAVA_TOOL_OPTIONS="-XX:+UseZGC -XX:+ZGenerational"`), probes HTTP/gRPC, `PodDisruptionBudget`, `NetworkPolicy` Zero-Trust (aceitando tráfego gRPC apenas de `pfm-ingestion-bff-go` e conectando apenas no PostgreSQL/Kafka) e exportação OpenTelemetry OTLP.
-- `monitoring/prometheus-alerts.yaml`: Regras Prometheus baseadas no SLO oficial (Artefato 07 V2): disponibilidade < 99,95% (Multi-window Burn Rate), latência gRPC p99 > 150ms e acúmulo na tabela `outbox_events` > 100 registros não publicados.
-- `.github/workflows/infra-validate.yml`: Pipeline GitOps executando `tofu fmt -check`, `tofu validate`, `helm lint`, `tfsec` e `checkov`.
+[![Gitflow](https://img.shields.io/badge/Gitflow-develop%20%7C%20main-indigo)](CONTRIBUTING.md)
+[![SemVer](https://img.shields.io/badge/SemVer-2.0.0-blue)](CHANGELOG.md)
+[![Docs](https://img.shields.io/badge/PFM%20Docs-V3.0-8CBA51)](https://sorobanerp.github.io/pfm-docs/)
 
 ---
 
-## Topologia de Portas: Local Host vs. Kubernetes Cloud
+## 1. Visão Geral & Papel na Arquitetura
 
-- **Host Local (`values-local.yaml`):** HTTP `18200` (`SERVER_PORT`), gRPC `18210` (`GRPC_SERVER_PORT`), PostgreSQL `15432`, Kafka `19092`.
-- **Produção K8s (`values-prod.yaml`):** HTTP `8080` (Service & Container), gRPC `9090` (Service & Container), PostgreSQL `5432`, Kafka `9092`.
+Infraestrutura dedicada 1:1 para o `pfm-core-ledger-java`: Task Definition **Fargate Spot Arm64**, Service Connect (`pfm-core-ledger-java.pfm.internal:18200`), IAM Task Role (RDS Connect, KMS, Secrets Manager), Application Auto Scaling (`1–3` réplicas) e Rollback Automático S3.
+
+- **Repositório:** `Sorobanerp/pfm-core-ledger-infra`
+- **Vínculo com `pfm-docs`:** `ADR-002, ADR-008 | US-01..US-05, US-12, US-13`
+
+```mermaid
+flowchart LR
+    INFRA["pfm-core-ledger-infra (OpenTofu)"] --> ECS["ECS Service (Fargate Spot Arm64)"]
+    ECS --> SC["Service Connect: pfm-core-ledger-java.pfm.internal:18200"]
+    INFRA --> IAM["IAM Task Role (RDS + KMS + Secrets)"]
+```
+
+---
+
+## 2. Pré-requisitos & Variáveis de Ambiente
+
+### Pré-requisitos
+- OpenTofu `>= 1.8.0`
+- Trivy `>= 0.50`
+
+### Variáveis de Ambiente (Sem Segredos Hardcoded)
+| Variável | Padrão | Descrição |
+| :--- | :---: | :--- |
+| `TF_VAR_compute_engine` | `ecs_fargate_spot` | Motor de compute (`ecs_fargate_spot` ou `eks`) |
+| `TF_VAR_environment` | `prod` | Ambiente alvo |
+| `TF_STATE_BUCKET_AWS` | *(CI Secret/Var)* | Bucket S3 de state remoto OpenTofu |
+
+> **Segurança (Zero-Trust):** Nunca commite tokens, senhas, chaves AWS ou strings de conexão com credenciais reais. Utilize `.env` local (ignorado no `.gitignore`) ou AWS Secrets Manager / GitHub OIDC.
+
+---
+
+## 3. Como Executar Localmente
+
+```bash
+tofu -chdir=terraform/aws init -backend=false
+tofu -chdir=terraform/aws validate
+```
+
+---
+
+## 4. Como Testar e Validar
+
+```bash
+tofu fmt -check -recursive terraform/
+tofu -chdir=terraform/aws init -backend=false && tofu -chdir=terraform/aws validate
+trivy config --severity CRITICAL,HIGH --exit-code 1 terraform/
+```
+
+---
+
+## 5. Como Provisionar / Validar na Nuvem
+
+1. Fluxo Gitflow: `feat/*` $\rightarrow$ `develop` $\rightarrow$ `release/vX.Y.Z` $\rightarrow$ `main` (GMUD).
+2. Validação pós-deploy: `aws ecs describe-services --cluster pfm-pilot-prod --services pfm-core-ledger-java --region us-east-2`.
+
+Consulte [CONTRIBUTING.md](CONTRIBUTING.md) para regras de Conventional Commits e [CHANGELOG.md](CHANGELOG.md) para histórico de versões.
