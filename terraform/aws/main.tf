@@ -201,14 +201,20 @@ resource "aws_iam_role_policy" "ecs_task_least_privilege" {
           "secretsmanager:GetSecretValue",
           "secretsmanager:DescribeSecret"
         ]
-        Resource = ["*"]
+        Resource = ["arn:aws:secretsmanager:${var.aws_region}:*:secret:pfm/upstash/*"]
       }
     ]
   })
 }
 
+variable "enable_cloudwatch_logs" {
+  description = "Disable AWS CloudWatch Logs by default (FinOps ADR-010: use Datadog JSON stdout / FireLens instead of CloudWatch)"
+  type        = bool
+  default     = false
+}
+
 resource "aws_cloudwatch_log_group" "ecs_logs" {
-  count             = var.compute_engine == "ecs_fargate_spot" ? 1 : 0
+  count             = var.compute_engine == "ecs_fargate_spot" && var.enable_cloudwatch_logs ? 1 : 0
   name              = "/ecs/pfm-core-ledger-java-${var.environment}"
   retention_in_days = 7
 
@@ -246,16 +252,17 @@ resource "aws_ecs_task_definition" "service" {
           protocol      = "tcp"
         }
       ]
-      logConfiguration = {
+      logConfiguration = var.enable_cloudwatch_logs ? {
         logDriver = "awslogs"
         options = {
           "awslogs-group"         = aws_cloudwatch_log_group.ecs_logs[0].name
           "awslogs-region"        = var.aws_region
           "awslogs-stream-prefix" = "ledger"
         }
-      }
+      } : null
       environment = [
         { name = "SPRING_PROFILES_ACTIVE", value = "prod,ecs-pilot" },
+        { name = "AWS_CLOUDWATCH_ENABLED", value = "false" },
         { name = "SERVER_PORT", value = "18200" }
       ]
     }
