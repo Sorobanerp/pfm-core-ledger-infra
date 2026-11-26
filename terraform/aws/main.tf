@@ -118,6 +118,7 @@ locals {
   private_subnet_ids          = try(data.terraform_remote_state.shared.outputs.private_subnet_ids, [])
   task_subnet_ids             = length(local.public_subnet_ids) > 0 ? local.public_subnet_ids : local.private_subnet_ids
   upstash_kafka_secret_arn    = try(data.terraform_remote_state.shared.outputs.upstash_kafka_secret_arn, "")
+  datadog_api_key_secret_arn  = try(data.terraform_remote_state.shared.outputs.datadog_api_key_secret_arn, "arn:aws:secretsmanager:${var.aws_region}:*:secret:pfm/datadog/api-key-*")
 }
 
 # =============================================================================
@@ -201,7 +202,10 @@ resource "aws_iam_role_policy" "ecs_task_least_privilege" {
           "secretsmanager:GetSecretValue",
           "secretsmanager:DescribeSecret"
         ]
-        Resource = ["arn:aws:secretsmanager:${var.aws_region}:*:secret:pfm/upstash/*"]
+        Resource = [
+          "arn:aws:secretsmanager:${var.aws_region}:*:secret:pfm/upstash/*",
+          "arn:aws:secretsmanager:${var.aws_region}:*:secret:pfm/datadog/*"
+        ]
       }
     ]
   })
@@ -263,7 +267,22 @@ resource "aws_ecs_task_definition" "service" {
       environment = [
         { name = "SPRING_PROFILES_ACTIVE", value = "prod,ecs-pilot" },
         { name = "AWS_CLOUDWATCH_ENABLED", value = "false" },
-        { name = "SERVER_PORT", value = "18200" }
+        { name = "CLOUDWATCH_LOGS_ENABLED", value = "false" },
+        { name = "SERVER_PORT", value = "18200" },
+        { name = "DD_SERVICE", value = "pfm-core-ledger-java" },
+        { name = "DD_ENV", value = var.environment },
+        { name = "DD_VERSION", value = var.image_tag },
+        { name = "DD_LOGS_INJECTION", value = "true" },
+        { name = "DD_TRACE_SAMPLE_RATE", value = "0.10" },
+        { name = "DD_SITE", value = "us3.datadoghq.com" },
+        { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = "https://otel-collector.pfm.internal:4318" },
+        { name = "DD_CREDENTIAL_ARN", value = local.datadog_api_key_secret_arn }
+      ]
+      secrets = [
+        {
+          name      = "DD_API_KEY"
+          valueFrom = local.datadog_api_key_secret_arn
+        }
       ]
     }
   ])
